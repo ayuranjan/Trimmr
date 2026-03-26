@@ -4,7 +4,7 @@ mod filters;
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 
-use commands::{cost::handle_cost_git, git::handle_git};
+use commands::{cost::handle_cost_git, debug::handle_debug_git, git::handle_git};
 
 #[derive(Parser)]
 #[command(
@@ -32,13 +32,18 @@ enum Commands {
     /// Show raw vs filtered comparison with token counts
     Cost {
         #[command(subcommand)]
-        tool: CostTool,
+        tool: GitTool,
+    },
+    /// Show porcelain input and filtered output for debugging filter logic
+    Debug {
+        #[command(subcommand)]
+        tool: GitTool,
     },
 }
 
 #[derive(Subcommand)]
-enum CostTool {
-    /// Compare raw vs filtered output for a git subcommand
+enum GitTool {
+    /// git subcommand
     #[command(disable_help_flag = true)]
     Git {
         /// git subcommand
@@ -56,8 +61,11 @@ fn main() -> Result<()> {
     match cli.command {
         Commands::Git { sub, args } => handle_git(&sub, &args)?,
         Commands::Cost {
-            tool: CostTool::Git { sub, args },
+            tool: GitTool::Git { sub, args },
         } => handle_cost_git(&sub, &args)?,
+        Commands::Debug {
+            tool: GitTool::Git { sub, args },
+        } => handle_debug_git(&sub, &args)?,
     }
 
     Ok(())

@@ -32,6 +32,8 @@ The architecture is intentionally small:
   - Command-specific output compression logic
 - `src/commands/cost.rs`
   - Raw vs filtered comparison output
+- `src/commands/debug.rs`
+  - Debug mode: shows filter pipeline input and output
 - `src/filters/mod.rs`
   - Shared token estimate helper
 
@@ -41,7 +43,7 @@ Data flow for `trimr git ...`:
 2. Parse git global flags vs subcommand vs sub-args
 3. Execute raw git command
 4. Decide filter or passthrough
-5. Print filtered output
+5. Print filtered output (`FilterResult.compact_input` carries the intermediate format when one exists, e.g. porcelain v1 for status, `--stat` for diff)
 6. Print per-invocation token delta
 7. Exit with original git exit code
 
@@ -130,6 +132,8 @@ Key regression coverage includes:
 - `--porcelain=v2` passthrough safety
 - Help forwarding
 - Short-circuit global flags
+- Debug command routing (status/diff/log show `Filter input:`, add/push/pull/commit show `no intermediate format`)
+- Debug exit code propagation
 
 ## 9. Comparison against rtk patterns
 

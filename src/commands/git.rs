@@ -12,6 +12,7 @@ pub struct FilterResult {
     pub raw_bytes: usize,
     pub filtered_bytes: usize,
     pub exit_code: i32,
+    pub compact_input: Option<String>,
 }
 
 struct ParsedGitInvocation {
@@ -159,10 +160,11 @@ fn passthrough_result(raw: GitOutput) -> FilterResult {
         raw_bytes,
         filtered_bytes: raw_bytes,
         exit_code: raw.exit_code,
+        compact_input: None,
     }
 }
 
-fn filtered_result(raw: GitOutput, filtered_output: String) -> FilterResult {
+fn filtered_result(raw: GitOutput, filtered_output: String, compact_input: Option<String>) -> FilterResult {
     let raw_output = raw.combined_output;
     let raw_bytes = raw_output.len();
     let filtered_bytes = filtered_output.len();
@@ -172,6 +174,7 @@ fn filtered_result(raw: GitOutput, filtered_output: String) -> FilterResult {
         raw_bytes,
         filtered_bytes,
         exit_code: raw.exit_code,
+        compact_input,
     }
 }
 
@@ -210,7 +213,7 @@ pub fn run_git(sub: &str, args: &[String]) -> Result<FilterResult> {
                 return Ok(passthrough_result(raw));
             }
             let filtered = filter_status(&porcelain.combined_output);
-            Ok(filtered_result(raw, filtered))
+            Ok(filtered_result(raw, filtered, Some(porcelain.combined_output)))
         }
         "diff" => {
             let raw = run_raw_git(&parsed.global_args, Some("diff"), &parsed.sub_args)?;
@@ -227,7 +230,7 @@ pub fn run_git(sub: &str, args: &[String]) -> Result<FilterResult> {
                 return Ok(passthrough_result(raw));
             }
             let filtered = filter_diff(&stat_out.combined_output);
-            Ok(filtered_result(raw, filtered))
+            Ok(filtered_result(raw, filtered, Some(stat_out.combined_output)))
         }
         "log" => {
             let raw = run_raw_git(&parsed.global_args, Some("log"), &parsed.sub_args)?;
@@ -244,7 +247,7 @@ pub fn run_git(sub: &str, args: &[String]) -> Result<FilterResult> {
                 return Ok(passthrough_result(raw));
             }
             let filtered = filter_log(&log_out.combined_output);
-            Ok(filtered_result(raw, filtered))
+            Ok(filtered_result(raw, filtered, Some(log_out.combined_output)))
         }
         "pull" => {
             let raw = run_raw_git(&parsed.global_args, Some("pull"), &parsed.sub_args)?;
@@ -252,7 +255,7 @@ pub fn run_git(sub: &str, args: &[String]) -> Result<FilterResult> {
                 return Ok(passthrough_result(raw));
             }
             let filtered = filter_pull(&raw.combined_output);
-            Ok(filtered_result(raw, filtered))
+            Ok(filtered_result(raw, filtered, None))
         }
         "push" => {
             let raw = run_raw_git(&parsed.global_args, Some("push"), &parsed.sub_args)?;
@@ -260,7 +263,7 @@ pub fn run_git(sub: &str, args: &[String]) -> Result<FilterResult> {
                 return Ok(passthrough_result(raw));
             }
             let filtered = filter_push(&raw.combined_output);
-            Ok(filtered_result(raw, filtered))
+            Ok(filtered_result(raw, filtered, None))
         }
         "commit" => {
             let raw = run_raw_git(&parsed.global_args, Some("commit"), &parsed.sub_args)?;
@@ -268,14 +271,14 @@ pub fn run_git(sub: &str, args: &[String]) -> Result<FilterResult> {
                 return Ok(passthrough_result(raw));
             }
             let filtered = filter_commit(&raw.combined_output);
-            Ok(filtered_result(raw, filtered))
+            Ok(filtered_result(raw, filtered, None))
         }
         "add" => {
             let raw = run_raw_git(&parsed.global_args, Some("add"), &parsed.sub_args)?;
             if !raw.success() {
                 return Ok(passthrough_result(raw));
             }
-            Ok(filtered_result(raw, "ok".to_string()))
+            Ok(filtered_result(raw, "ok".to_string(), None))
         }
         // Passthrough for anything else (checkout, branch, stash, …)
         _ => {

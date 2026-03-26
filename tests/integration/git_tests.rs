@@ -310,3 +310,83 @@ fn cost_git_diff_shows_comparison() {
         .success()
         .stdout(contains("Tokens:"));
 }
+
+#[test]
+fn debug_git_status_shows_filter_input() {
+    let dir = make_git_repo();
+    fs::write(dir.path().join("new.txt"), "new file\n").unwrap();
+
+    Command::cargo_bin("trimr")
+        .unwrap()
+        .args(["debug", "git", "status"])
+        .current_dir(dir.path())
+        .assert()
+        .success()
+        .stdout(contains("Command: git status"))
+        .stdout(contains("Filter input:"))
+        .stdout(contains("??"))
+        .stdout(contains("Filtered output:"))
+        .stdout(contains("untracked"));
+}
+
+#[test]
+fn debug_git_diff_shows_filter_input() {
+    let dir = make_git_repo();
+    fs::write(dir.path().join("README.md"), "# modified\nextra line\n").unwrap();
+
+    Command::cargo_bin("trimr")
+        .unwrap()
+        .args(["debug", "git", "diff"])
+        .current_dir(dir.path())
+        .assert()
+        .success()
+        .stdout(contains("Command: git diff"))
+        .stdout(contains("Filter input:"))
+        .stdout(contains("Filtered output:"));
+}
+
+#[test]
+fn debug_git_log_shows_filter_input() {
+    let dir = make_git_repo();
+
+    Command::cargo_bin("trimr")
+        .unwrap()
+        .args(["debug", "git", "log"])
+        .current_dir(dir.path())
+        .assert()
+        .success()
+        .stdout(contains("Command: git log"))
+        .stdout(contains("Filter input:"))
+        .stdout(contains("Filtered output:"))
+        .stdout(contains("init"));
+}
+
+#[test]
+fn debug_git_add_shows_no_intermediate_format() {
+    let dir = make_git_repo();
+    fs::write(dir.path().join("new.txt"), "content\n").unwrap();
+
+    Command::cargo_bin("trimr")
+        .unwrap()
+        .args(["debug", "git", "add", "new.txt"])
+        .current_dir(dir.path())
+        .assert()
+        .success()
+        .stdout(contains("Command: git add new.txt"))
+        .stdout(contains("no intermediate format"))
+        .stdout(contains("Filtered output:"))
+        .stdout(contains("ok"));
+}
+
+#[test]
+fn debug_git_exit_code_propagated() {
+    let dir = TempDir::new().unwrap();
+
+    Command::cargo_bin("trimr")
+        .unwrap()
+        .args(["debug", "git", "status"])
+        .current_dir(dir.path())
+        .assert()
+        .failure()
+        .stdout(contains("not a git repository"));
+}

@@ -1,17 +1,12 @@
 use anyhow::Result;
 use colored::Colorize;
 
-use crate::{commands::git::run_git, filters::estimate_tokens};
-
-const DIVIDER: &str = "─────────────────────────────────────────";
+use crate::{commands::{DIVIDER, format_git_cmd, git::run_git}, filters::estimate_tokens};
 
 /// `trimr cost git <sub> [args]` — side-by-side raw vs filtered + token counts.
 pub fn handle_cost_git(sub: &str, args: &[String]) -> Result<()> {
     let r = run_git(sub, args)?;
-    let cmd_tail = std::iter::once(sub)
-        .chain(args.iter().map(String::as_str))
-        .collect::<Vec<_>>()
-        .join(" ");
+    let cmd_tail = format_git_cmd(sub, args);
 
     let raw_t = estimate_tokens(r.raw_bytes);
     let out_t = estimate_tokens(r.filtered_bytes);

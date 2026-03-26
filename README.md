@@ -23,6 +23,7 @@ LLMs consume context tokens quickly when command output is verbose. `trimr` redu
   - `commit`
   - `add`
 - `cost` mode to compare raw vs filtered output side-by-side
+- `debug` mode to inspect filter pipeline input and output
 - Per-invocation token estimate and savings display
 - No persistent storage
 
@@ -84,6 +85,23 @@ Examples:
 ```bash
 trimr cost git status
 trimr cost git -C /path/to/repo status
+```
+
+### Debug filter pipeline
+
+```bash
+trimr debug git <subcommand> [args...]
+```
+
+Shows what the filter receives as input and what it produces as output. Useful when developing or debugging filter logic.
+
+Examples:
+
+```bash
+trimr debug git status        # shows porcelain v1 input → filtered output
+trimr debug git diff          # shows --stat input → filtered output
+trimr debug git log           # shows compact pretty input → filtered output
+trimr debug git add file.txt  # shows "no intermediate format" (filter works on raw output directly)
 ```
 
 ## Behavior guarantees
