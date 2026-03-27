@@ -1,16 +1,14 @@
 use anyhow::{Context, Result};
 use std::process::Command;
 
-use crate::filters::{
-    estimate_tokens,
-    git::{filter_commit, filter_diff, filter_log, filter_pull, filter_push, filter_status},
+use crate::{
+    commands::combine_output,
+    filters::git::{filter_commit, filter_diff, filter_log, filter_pull, filter_push, filter_status},
 };
 
 pub struct FilterResult {
     pub filtered_output: String,
     pub raw_output: String,
-    pub raw_bytes: usize,
-    pub filtered_bytes: usize,
     pub exit_code: i32,
     pub compact_input: Option<String>,
 }
@@ -30,17 +28,10 @@ impl GitOutput {
     fn success(&self) -> bool {
         self.exit_code == 0
     }
-}
 
-fn combine_output(out: std::process::Output) -> GitOutput {
-    let mut combined = String::from_utf8_lossy(&out.stdout).into_owned();
-    let stderr = String::from_utf8_lossy(&out.stderr);
-    if !stderr.is_empty() {
-        combined.push_str(&stderr);
-    }
-    GitOutput {
-        combined_output: combined,
-        exit_code: out.status.code().unwrap_or(1),
+    fn from_output(out: std::process::Output) -> Self {
+        let (combined_output, exit_code) = combine_output(out);
+        GitOutput { combined_output, exit_code }
     }
 }
 
@@ -131,7 +122,7 @@ fn run_raw_git(global_args: &[String], sub: Option<&str>, args: &[String]) -> Re
         .args(args)
         .output()
         .with_context(|| format!("failed to run `git {}`", sub.unwrap_or("<global>")))?;
-    Ok(combine_output(out))
+    Ok(GitOutput::from_output(out))
 }
 
 /// Run git with specific args (used for the filtered variant of read-only commands).
@@ -148,32 +139,42 @@ fn run_git_args(
         .args(user_args)
         .output()
         .with_context(|| format!("failed to run `git {}`", sub))?;
-    Ok(combine_output(out))
+    Ok(GitOutput::from_output(out))
 }
 
 fn passthrough_result(raw: GitOutput) -> FilterResult {
-    let raw_output = raw.combined_output;
-    let raw_bytes = raw_output.len();
+    let combined = raw.combined_output;
     FilterResult {
-        filtered_output: raw_output.clone(),
-        raw_output,
-        raw_bytes,
-        filtered_bytes: raw_bytes,
+        filtered_output: combined.clone(),
+        raw_output: combined,
         exit_code: raw.exit_code,
         compact_input: None,
     }
 }
 
-fn filtered_result(raw: GitOutput, filtered_output: String, compact_input: Option<String>) -> FilterResult {
-    let raw_output = raw.combined_output;
-    let raw_bytes = raw_output.len();
-    let filtered_bytes = filtered_output.len();
+fn run_simple_filter(
+    parsed: &ParsedGitInvocation,
+    subcommand: &str,
+    filter_fn: fn(&str) -> String,
+) -> Result<FilterResult> {
+    let raw = run_raw_git(&parsed.global_args, Some(subcommand), &parsed.sub_args)?;
+    if !raw.success() {
+        return Ok(passthrough_result(raw));
+    }
+    let filtered = filter_fn(&raw.combined_output);
+    Ok(filtered_result(filtered, raw.combined_output, raw.exit_code, None))
+}
+
+fn filtered_result(
+    filtered_output: String,
+    raw_output: String,
+    exit_code: i32,
+    compact_input: Option<String>,
+) -> FilterResult {
     FilterResult {
         filtered_output,
         raw_output,
-        raw_bytes,
-        filtered_bytes,
-        exit_code: raw.exit_code,
+        exit_code,
         compact_input,
     }
 }
@@ -192,13 +193,9 @@ pub fn run_git(sub: &str, args: &[String]) -> Result<FilterResult> {
 
     match subcommand {
         "status" => {
-            let raw = run_raw_git(&parsed.global_args, Some("status"), &parsed.sub_args)?;
-            if !raw.success() {
-                return Ok(passthrough_result(raw));
-            }
-
             // Keep user-specified status formats as-is (e.g. --porcelain=v2, -z).
             // Compact porcelain-v1 parsing is only safe for plain `git status`.
+            let raw = run_raw_git(&parsed.global_args, Some("status"), &parsed.sub_args)?;
             if !parsed.sub_args.is_empty() {
                 return Ok(passthrough_result(raw));
             }
@@ -213,13 +210,15 @@ pub fn run_git(sub: &str, args: &[String]) -> Result<FilterResult> {
                 return Ok(passthrough_result(raw));
             }
             let filtered = filter_status(&porcelain.combined_output);
-            Ok(filtered_result(raw, filtered, Some(porcelain.combined_output)))
+            Ok(filtered_result(
+                filtered,
+                raw.combined_output,
+                porcelain.exit_code,
+                Some(porcelain.combined_output),
+            ))
         }
         "diff" => {
             let raw = run_raw_git(&parsed.global_args, Some("diff"), &parsed.sub_args)?;
-            if !raw.success() {
-                return Ok(passthrough_result(raw));
-            }
             let stat_out = run_git_args(
                 &parsed.global_args,
                 "diff",
@@ -230,7 +229,12 @@ pub fn run_git(sub: &str, args: &[String]) -> Result<FilterResult> {
                 return Ok(passthrough_result(raw));
             }
             let filtered = filter_diff(&stat_out.combined_output);
-            Ok(filtered_result(raw, filtered, Some(stat_out.combined_output)))
+            Ok(filtered_result(
+                filtered,
+                raw.combined_output,
+                stat_out.exit_code,
+                Some(stat_out.combined_output),
+            ))
         }
         "log" => {
             let raw = run_raw_git(&parsed.global_args, Some("log"), &parsed.sub_args)?;
@@ -247,38 +251,22 @@ pub fn run_git(sub: &str, args: &[String]) -> Result<FilterResult> {
                 return Ok(passthrough_result(raw));
             }
             let filtered = filter_log(&log_out.combined_output);
-            Ok(filtered_result(raw, filtered, Some(log_out.combined_output)))
+            Ok(filtered_result(
+                filtered,
+                raw.combined_output,
+                log_out.exit_code,
+                Some(log_out.combined_output),
+            ))
         }
-        "pull" => {
-            let raw = run_raw_git(&parsed.global_args, Some("pull"), &parsed.sub_args)?;
-            if !raw.success() {
-                return Ok(passthrough_result(raw));
-            }
-            let filtered = filter_pull(&raw.combined_output);
-            Ok(filtered_result(raw, filtered, None))
-        }
-        "push" => {
-            let raw = run_raw_git(&parsed.global_args, Some("push"), &parsed.sub_args)?;
-            if !raw.success() {
-                return Ok(passthrough_result(raw));
-            }
-            let filtered = filter_push(&raw.combined_output);
-            Ok(filtered_result(raw, filtered, None))
-        }
-        "commit" => {
-            let raw = run_raw_git(&parsed.global_args, Some("commit"), &parsed.sub_args)?;
-            if !raw.success() {
-                return Ok(passthrough_result(raw));
-            }
-            let filtered = filter_commit(&raw.combined_output);
-            Ok(filtered_result(raw, filtered, None))
-        }
+        "pull" => run_simple_filter(&parsed, "pull", filter_pull),
+        "push" => run_simple_filter(&parsed, "push", filter_push),
+        "commit" => run_simple_filter(&parsed, "commit", filter_commit),
         "add" => {
             let raw = run_raw_git(&parsed.global_args, Some("add"), &parsed.sub_args)?;
             if !raw.success() {
                 return Ok(passthrough_result(raw));
             }
-            Ok(filtered_result(raw, "ok".to_string(), None))
+            Ok(filtered_result("ok".to_string(), raw.combined_output, raw.exit_code, None))
         }
         // Passthrough for anything else (checkout, branch, stash, …)
         _ => {
@@ -298,16 +286,6 @@ pub fn handle_git(sub: &str, args: &[String]) -> Result<()> {
             println!();
         }
     }
-
-    let raw_t = estimate_tokens(r.raw_bytes);
-    let out_t = estimate_tokens(r.filtered_bytes);
-    let saved = raw_t as i64 - out_t as i64;
-    let pct = if raw_t > 0 {
-        (saved as f64 / raw_t as f64) * 100.0
-    } else {
-        0.0
-    };
-    eprintln!("[saved {} tokens, {:.0}%]", saved, pct);
 
     if r.exit_code != 0 {
         std::process::exit(r.exit_code);
@@ -350,6 +328,9 @@ mod tests {
     fn short_circuit_flags_detected() {
         assert!(global_flags_short_circuit(&["--version".to_string()]));
         assert!(global_flags_short_circuit(&["--html-path".to_string()]));
-        assert!(!global_flags_short_circuit(&["-C".to_string(), "repo".to_string()]));
+        assert!(!global_flags_short_circuit(&[
+            "-C".to_string(),
+            "repo".to_string()
+        ]));
     }
 }

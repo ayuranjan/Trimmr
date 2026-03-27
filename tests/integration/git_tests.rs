@@ -1,5 +1,8 @@
 use assert_cmd::Command;
-use predicates::{prelude::PredicateBooleanExt, str::contains};
+use predicates::{
+    prelude::PredicateBooleanExt,
+    str::{contains, is_empty},
+};
 use std::fs;
 use tempfile::TempDir;
 
@@ -171,7 +174,7 @@ fn git_status_outside_repo_fails() {
 }
 
 #[test]
-fn git_passthrough_reports_savings_even_when_zero() {
+fn git_passthrough_has_no_cost_banner() {
     let dir = make_git_repo();
 
     Command::cargo_bin("trimr")
@@ -180,7 +183,8 @@ fn git_passthrough_reports_savings_even_when_zero() {
         .current_dir(dir.path())
         .assert()
         .success()
-        .stderr(contains("[saved 0 tokens, 0%]"));
+        .stdout(contains("true"))
+        .stderr(is_empty());
 }
 
 #[test]
@@ -389,4 +393,40 @@ fn debug_git_exit_code_propagated() {
         .assert()
         .failure()
         .stdout(contains("not a git repository"));
+}
+
+#[test]
+fn cost_git_commit_does_not_double_run() {
+    let dir = make_git_repo();
+    fs::write(dir.path().join("new.txt"), "content\n").unwrap();
+
+    std::process::Command::new("git")
+        .args(["add", "new.txt"])
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+
+    Command::cargo_bin("trimr")
+        .unwrap()
+        .args(["cost", "git", "commit", "-m", "add new.txt"])
+        .current_dir(dir.path())
+        .assert()
+        .success()
+        .stdout(contains("Command: git commit"))
+        .stdout(contains("Tokens:"));
+}
+
+#[test]
+fn git_diff_exit_code_passthrough_is_raw_diff() {
+    let dir = make_git_repo();
+    fs::write(dir.path().join("README.md"), "# modified\nextra line\n").unwrap();
+
+    Command::cargo_bin("trimr")
+        .unwrap()
+        .args(["git", "diff", "--exit-code"])
+        .current_dir(dir.path())
+        .assert()
+        .failure()
+        .stdout(contains("@@"))
+        .stdout(contains("1 file changed").not());
 }

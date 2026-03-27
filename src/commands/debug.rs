@@ -1,7 +1,7 @@
 use anyhow::Result;
 use colored::Colorize;
 
-use crate::commands::{DIVIDER, format_git_cmd, git::run_git};
+use crate::commands::{format_git_cmd, git::run_git, DIVIDER};
 
 /// `trimr debug git <sub> [args]` — show intermediate porcelain/compact input and filtered output.
 pub fn handle_debug_git(sub: &str, args: &[String]) -> Result<()> {
@@ -21,7 +21,6 @@ pub fn handle_debug_git(sub: &str, args: &[String]) -> Result<()> {
                 "{}",
                 "no intermediate format — filter works directly on raw output".dimmed()
             );
-            println!("{}", r.raw_output.trim_end());
         }
     }
 

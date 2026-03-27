@@ -1,15 +1,18 @@
 use anyhow::Result;
 use colored::Colorize;
 
-use crate::{commands::{DIVIDER, format_git_cmd, git::run_git}, filters::estimate_tokens};
+use crate::{
+    commands::{format_git_cmd, git::run_git, DIVIDER},
+    filters::estimate_tokens,
+};
 
 /// `trimr cost git <sub> [args]` — side-by-side raw vs filtered + token counts.
 pub fn handle_cost_git(sub: &str, args: &[String]) -> Result<()> {
     let r = run_git(sub, args)?;
     let cmd_tail = format_git_cmd(sub, args);
 
-    let raw_t = estimate_tokens(r.raw_bytes);
-    let out_t = estimate_tokens(r.filtered_bytes);
+    let raw_t = estimate_tokens(r.raw_output.len());
+    let out_t = estimate_tokens(r.filtered_output.len());
     let saved = raw_t as i64 - out_t as i64;
     let pct = if raw_t > 0 {
         (saved as f64 / raw_t as f64) * 100.0
