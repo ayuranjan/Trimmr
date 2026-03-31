@@ -7,23 +7,20 @@
 ///   "Branch: main [ahead 1]\n2 modified, 1 untracked"
 pub fn filter_status(porcelain: &str) -> String {
     let mut branch_line = String::new();
-    let mut added = 0u32;
-    let mut modified = 0u32;
-    let mut deleted = 0u32;
-    let mut renamed = 0u32;
-    let mut copied = 0u32;
-    let mut type_changed = 0u32;
-    let mut conflicted = 0u32;
-    let mut untracked = 0u32;
-    let mut ignored = 0u32;
+    let mut added: Vec<String> = Vec::new();
+    let mut modified: Vec<String> = Vec::new();
+    let mut deleted: Vec<String> = Vec::new();
+    let mut renamed: Vec<String> = Vec::new();
+    let mut copied: Vec<String> = Vec::new();
+    let mut type_changed: Vec<String> = Vec::new();
+    let mut conflicted: Vec<String> = Vec::new();
+    let mut untracked: Vec<String> = Vec::new();
+    let mut ignored: Vec<String> = Vec::new();
 
     for line in porcelain.lines() {
         if let Some(rest) = line.strip_prefix("## ") {
-            // "## main...origin/main [ahead 1]" or "## HEAD (no branch)"
-            // Strip tracking info (everything after "...")
             let branch = if let Some(dot_pos) = rest.find("...") {
                 let b = &rest[..dot_pos];
-                // Check for sync status like [ahead 1] or [behind 2]
                 if let Some(bracket) = rest.find('[') {
                     let end = rest.find(']').map(|i| i + 1).unwrap_or(rest.len());
                     format!("{} {}", b, &rest[bracket..end])
@@ -37,66 +34,66 @@ pub fn filter_status(porcelain: &str) -> String {
         } else if line.len() >= 2 {
             let idx = line.chars().next().unwrap_or(' ');
             let work = line.chars().nth(1).unwrap_or(' ');
+            let filename = line.get(3..).unwrap_or("").trim().to_string();
 
             if idx == '?' && work == '?' {
-                untracked += 1;
+                untracked.push(filename);
                 continue;
             }
             if idx == '!' && work == '!' {
-                ignored += 1;
+                ignored.push(filename);
                 continue;
             }
             if is_unmerged(idx, work) {
-                conflicted += 1;
+                conflicted.push(filename);
                 continue;
             }
 
-            // Count by worktree status first, then index status
             match work {
-                'M' => modified += 1,
-                'D' => deleted += 1,
-                'T' => type_changed += 1,
+                'M' => modified.push(filename.clone()),
+                'D' => deleted.push(filename.clone()),
+                'T' => type_changed.push(filename.clone()),
                 _ => {}
             }
             match idx {
-                'M' if work != 'M' => modified += 1,
-                'A' => added += 1,
-                'D' if work != 'D' => deleted += 1,
-                'R' => renamed += 1,
-                'C' => copied += 1,
-                'T' if work != 'T' => type_changed += 1,
+                'M' if work != 'M' => modified.push(filename.clone()),
+                'A' => added.push(filename.clone()),
+                'D' if work != 'D' => deleted.push(filename.clone()),
+                'R' => renamed.push(filename.clone()),
+                'C' => copied.push(filename.clone()),
+                'T' if work != 'T' => type_changed.push(filename.clone()),
                 _ => {}
             }
         }
     }
 
     let mut parts: Vec<String> = Vec::new();
-    if added > 0 {
-        parts.push(format!("{} added", added));
+    if !added.is_empty() {
+        parts.push(format_category("added", &added));
     }
-    if modified > 0 {
-        parts.push(format!("{} modified", modified));
+    if !modified.is_empty() {
+        parts.push(format_category("modified", &modified));
     }
-    if renamed > 0 {
-        parts.push(format!("{} renamed", renamed));
+    if !renamed.is_empty() {
+        parts.push(format_category("renamed", &renamed));
     }
-    if copied > 0 {
-        parts.push(format!("{} copied", copied));
+    if !copied.is_empty() {
+        parts.push(format_category("copied", &copied));
     }
-    if deleted > 0 {
-        parts.push(format!("{} deleted", deleted));
+    if !deleted.is_empty() {
+        parts.push(format_category("deleted", &deleted));
     }
-    if type_changed > 0 {
-        parts.push(format!("{} type-changed", type_changed));
+    if !type_changed.is_empty() {
+        parts.push(format_category("type-changed", &type_changed));
     }
-    if conflicted > 0 {
-        parts.push(format!("{} conflicted", conflicted));
+    if !conflicted.is_empty() {
+        parts.push(format_category("conflicted", &conflicted));
     }
-    if untracked > 0 {
-        parts.push(format!("{} untracked", untracked));
+    if !untracked.is_empty() {
+        parts.push(format_category("untracked", &untracked));
     }
-    if ignored > 0 {
-        parts.push(format!("{} ignored", ignored));
+    if !ignored.is_empty() {
+        parts.push(format_category("ignored", &ignored));
     }
 
     let status_line = if parts.is_empty() {
@@ -112,6 +109,16 @@ pub fn filter_status(porcelain: &str) -> String {
     }
 }
 
+/// Format a category with count and sample filename(s).
+fn format_category(label: &str, files: &[String]) -> String {
+    let count = files.len();
+    let sample = &files[0];
+    if count == 1 {
+        format!("{} {} ({})", count, label, sample)
+    } else {
+        format!("{} {} ({}, +{} more)", count, label, sample, count - 1)
+    }
+}
 fn is_unmerged(idx: char, work: char) -> bool {
     // Porcelain-v1 unmerged states:
     // DD, AU, UD, UA, DU, AA, UU
