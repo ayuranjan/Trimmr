@@ -188,6 +188,35 @@ pub fn filter_push(raw: &str) -> String {
     }
     "ok".to_string()
 }
+/// Compact `git branch` output - mark current branch, show all branches, add count.
+
+pub fn filter_branch(raw: &str) -> String {
+    let mut current = String::new();
+    let mut others: Vec<String> = Vec::new();
+
+    for line in raw.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        if let Some(branch) = trimmed.strip_prefix("* ") {
+            current = format!("* {} (current)", branch);
+        } else {
+            others.push(format!("  {}", trimmed));
+        }
+    }
+
+    let total = if current.is_empty() { others.len() } else { others.len() + 1 };
+
+    let mut lines: Vec<String> = Vec::new();
+    if !current.is_empty() {
+        lines.push(current);
+    }
+    lines.extend(others);
+    lines.push(format!("{} branch{}", total, if total == 1 { "" } else { "es" }));
+
+    lines.join("\n")
+}
 
 #[cfg(test)]
 mod tests {
@@ -304,5 +333,29 @@ mod tests {
         let input = "some unrecognized output\n";
         let out = filter_push(input);
         assert_eq!(out, "ok");
+    }
+    #[test]
+    fn filter_branch_single_branch() {
+        let input = "* main\n";
+        let out = filter_branch(input);
+        assert!(out.contains("* main (current)"), "got: {}", out);
+        assert!(out.contains("1 branch"), "got: {}", out);
+    }
+
+    #[test]
+    fn filter_branch_multiple_branches() {
+        let input = "* main\n  dev\n  feature/foo\n";
+        let out = filter_branch(input);
+        assert!(out.contains("* main (current)"), "got: {}", out);
+        assert!(out.contains("  dev"), "got: {}", out);
+        assert!(out.contains("  feature/foo"), "got: {}", out);
+        assert!(out.contains("3 branches"), "got: {}", out);
+    }
+
+    #[test]
+    fn filter_branch_no_branches() {
+        let input = "";
+        let out = filter_branch(input);
+        assert!(out.contains("0 branches"), "got: {}", out);
     }
 }
