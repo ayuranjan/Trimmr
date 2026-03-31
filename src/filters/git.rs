@@ -276,4 +276,33 @@ mod tests {
         let out = filter_commit(input);
         assert_eq!(out, "ok main abc1234");
     }
+
+    #[test]
+    fn filter_push_everything_up_to_date() {
+        let input = "Everything up-to-date\n";
+        let out = filter_push(input);
+        assert_eq!(out, "Everything up-to-date");
+    }
+
+    #[test]
+    fn filter_push_new_branch() {
+        let input = " * [new branch]      main -> origin/main\n";
+        let out = filter_push(input);
+        assert!(out.contains("->"), "got: {}", out);
+        assert!(out.starts_with("ok "), "got: {}", out);
+    }
+
+    #[test]
+    fn filter_push_branch_tracking_line() {
+        let input = "Branch 'main' set up to track remote branch 'main' from 'origin'.\n";
+        let out = filter_push(input);
+        assert!(out.starts_with("Branch"), "got: {}", out);
+    }
+
+    #[test]
+    fn filter_push_fallback_ok() {
+        let input = "some unrecognized output\n";
+        let out = filter_push(input);
+        assert_eq!(out, "ok");
+    }
 }
