@@ -3,7 +3,7 @@ use std::process::Command;
 
 use crate::{
     commands::combine_output,
-    filters::git::{filter_commit, filter_diff, filter_log, filter_pull, filter_push, filter_status},
+    filters::git::{filter_branch, filter_commit, filter_diff, filter_log, filter_pull, filter_push, filter_status},
 };
 
 pub struct FilterResult {
@@ -261,6 +261,7 @@ pub fn run_git(sub: &str, args: &[String]) -> Result<FilterResult> {
         "pull" => run_simple_filter(&parsed, "pull", filter_pull),
         "push" => run_simple_filter(&parsed, "push", filter_push),
         "commit" => run_simple_filter(&parsed, "commit", filter_commit),
+        "branch" => run_simple_filter(&parsed, "branch", filter_branch),
         "add" => {
             let raw = run_raw_git(&parsed.global_args, Some("add"), &parsed.sub_args)?;
             if !raw.success() {
